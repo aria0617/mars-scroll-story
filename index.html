@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MARS SCROLL — 向陨石坑边缘前进</title>
+    <meta
+      name="description"
+      content="滚动控制 120 帧火星全景，在毅力号的视角中横越耶泽罗陨石坑边缘。"
+    />
+    <meta property="og:title" content="MARS SCROLL — 向陨石坑边缘前进" />
+    <meta
+      property="og:description"
+      content="滚动控制 120 帧火星全景，在毅力号的视角中横越耶泽罗陨石坑边缘。"
+    />
+    <meta property="og:image" content="https://mars-scroll-study-01.pages.dev/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MARS SCROLL — 向陨石坑边缘前进" />
+    <meta
+      name="twitter:description"
+      content="滚动控制 120 帧火星全景，在毅力号的视角中横越耶泽罗陨石坑边缘。"
+    />
+    <meta name="twitter:image" content="https://mars-scroll-study-01.pages.dev/og.png" />
+    <style>
+      :root {
+        --ember: #ff642b;
+        --sand: #f2dfc9;
+        --night: #080706;
+        --hairline: rgba(242, 223, 201, 0.24);
+      }
+
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--night);
+        color: var(--sand);
+      }
+      body { font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+      button, a { font: inherit; }
+      .story-track { height: 700svh; }
+      .stage {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        background: #1b0f0a;
+      }
+      .frame-canvas, .color-grade, .grain {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .color-grade {
+        background:
+          linear-gradient(90deg, rgba(6,4,3,.76) 0%, rgba(6,4,3,.14) 48%, rgba(6,4,3,.22) 100%),
+          linear-gradient(0deg, rgba(6,4,3,.78) 0%, transparent 32%, rgba(6,4,3,.14) 100%);
+        pointer-events: none;
+      }
+      .grain {
+        opacity: .12;
+        pointer-events: none;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+        mix-blend-mode: soft-light;
+      }
+      .hud-top, .hud-bottom, .story-copy, .source-credit, .chapter-rail {
+        position: absolute;
+        z-index: 1;
+      }
+      .hud-top {
+        top: 0;
+        right: 0;
+        left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: clamp(24px, 4vw, 52px) clamp(24px, 5vw, 76px);
+        font: 650 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: .16em;
+      }
+      .mission-mark, .scroll-direction, .frame-counter {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .mission-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ember);
+        box-shadow: 0 0 18px rgba(255,100,43,.9);
+      }
+      .hud-muted { color: rgba(242,223,201,.46); }
+      .watermark { color: rgba(242,223,201,.76); }
+      .story-copy {
+        left: clamp(24px, 7vw, 112px);
+        top: 50%;
+        max-width: min(760px, 74vw);
+        transform: translateY(-50%);
+      }
+      .story-copy.changed { animation: copy-in 700ms cubic-bezier(.22,1,.36,1) both; }
+      .eyebrow {
+        margin: 0 0 20px;
+        color: var(--ember);
+        font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: .22em;
+      }
+      h1 {
+        max-width: 760px;
+        margin: 0;
+        text-wrap: balance;
+        font: 660 clamp(54px, 8.8vw, 124px)/.9 Arial, "PingFang SC", sans-serif;
+        letter-spacing: -.075em;
+        text-shadow: 0 12px 40px rgba(0,0,0,.22);
+      }
+      .dek {
+        max-width: 520px;
+        margin: 28px 0 0;
+        color: rgba(242,223,201,.75);
+        font-size: clamp(16px, 1.7vw, 22px);
+        line-height: 1.55;
+      }
+      .hud-bottom {
+        right: clamp(24px, 5vw, 76px);
+        bottom: clamp(28px, 4vw, 52px);
+        left: clamp(24px, 5vw, 76px);
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 16px 36px;
+        align-items: center;
+        font: 600 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: .16em;
+      }
+      .progress-track {
+        grid-column: 1/-1;
+        height: 1px;
+        overflow: hidden;
+        background: var(--hairline);
+      }
+      .progress-track span {
+        display: block;
+        width: 100%;
+        height: 100%;
+        transform: scaleX(0);
+        transform-origin: left;
+        background: var(--ember);
+        box-shadow: 0 0 12px var(--ember);
+      }
+      .chapter-rail {
+        top: 50%;
+        right: clamp(24px, 3vw, 48px);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        transform: translateY(-50%);
+      }
+      .rail-dot {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(242,223,201,.52) 0 2px, transparent 3px);
+        cursor: pointer;
+      }
+      .rail-dot::after {
+        content: "";
+        display: block;
+        width: 8px;
+        height: 8px;
+        margin: 8px;
+        border: 1px solid transparent;
+        border-radius: 50%;
+      }
+      .rail-dot.active::after, .rail-dot:focus-visible::after {
+        border-color: var(--ember);
+        box-shadow: 0 0 12px rgba(255,100,43,.78);
+      }
+      .source-credit {
+        right: clamp(24px, 5vw, 76px);
+        bottom: clamp(78px, 8vw, 112px);
+        color: rgba(242,223,201,.48);
+        text-decoration: none;
+        font: 600 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: .12em;
+      }
+      .source-credit:hover, .source-credit:focus-visible { color: var(--sand); }
+      .loader {
+        position: fixed;
+        z-index: 10;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        background: radial-gradient(circle at 72% 38%, rgba(107,42,20,.24), transparent 36%), #080706;
+        transition: opacity 850ms ease, visibility 850ms ease;
+      }
+      .loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+      .loader-inner { width: min(820px, 100%); }
+      .loader-kicker, .loader-meta {
+        font: 650 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: .16em;
+      }
+      .loader-kicker { margin: 0 0 16px; color: rgba(242,223,201,.52); }
+      .loader-word {
+        position: relative;
+        color: rgba(242,223,201,.12);
+        font: 760 clamp(92px, 23vw, 260px)/.82 Arial, sans-serif;
+        letter-spacing: -.09em;
+      }
+      .loader-fill { position: absolute; inset: 0; color: var(--ember); }
+      .loader-meta {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 22px;
+        padding-top: 14px;
+        border-top: 1px solid var(--hairline);
+        color: rgba(242,223,201,.64);
+      }
+      .enter-button {
+        width: 100%;
+        margin-top: 36px;
+        padding: 18px 24px;
+        border: 1px solid var(--ember);
+        color: var(--night);
+        background: var(--ember);
+        font-weight: 700;
+        letter-spacing: .08em;
+        cursor: pointer;
+      }
+      .enter-button:disabled {
+        border-color: var(--hairline);
+        color: rgba(242,223,201,.42);
+        background: transparent;
+        cursor: wait;
+      }
+      .enter-button:not(:disabled):hover, .enter-button:not(:disabled):focus-visible {
+        color: var(--sand);
+        background: transparent;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0,0,0,0);
+        white-space: nowrap;
+        border: 0;
+      }
+      @keyframes copy-in {
+        from { opacity: 0; transform: translateY(calc(-50% + 24px)); }
+        to { opacity: 1; transform: translateY(-50%); }
+      }
+      @media (max-width: 700px) {
+        .story-track { height: 620svh; }
+        .hud-top { align-items: flex-start; }
+        .mission-mark { flex-wrap: wrap; max-width: 180px; }
+        .watermark { max-width: 130px; text-align: right; line-height: 1.5; }
+        .story-copy { top: 46%; max-width: calc(100vw - 64px); }
+        h1 { font-size: clamp(48px, 15vw, 78px); }
+        .dek { max-width: 86vw; font-size: 15px; }
+        .chapter-rail { right: 12px; }
+        .source-credit { display: none; }
+        .hud-bottom { gap: 12px 20px; }
+        .scroll-direction .hud-muted { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .story-copy.changed, .loader { animation: none; transition: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="story-track">
+      <section class="stage" aria-label="火星全景滚动互动体验">
+        <canvas class="frame-canvas" aria-hidden="true"></canvas>
+        <div class="color-grade"></div>
+        <div class="grain"></div>
+
+        <header class="hud-top">
+          <div class="mission-mark">
+            <span class="mission-dot"></span>
+            <span>MARS 2020</span>
+            <span class="hud-muted">PIA26373</span>
+          </div>
+          <div class="watermark">LU × CODEX LAB / STUDY 01</div>
+        </header>
+
+        <section class="story-copy">
+          <p class="eyebrow" id="eyebrow"></p>
+          <h1 id="title"></h1>
+          <p class="dek" id="body-copy"></p>
+        </section>
+
+        <aside class="chapter-rail" aria-label="章节导航"></aside>
+
+        <footer class="hud-bottom">
+          <div class="scroll-direction"><span>SCROLL / ↑↓</span><span class="hud-muted">前进 · 后退</span></div>
+          <div class="frame-counter" aria-live="polite"><span id="frame-now">0001</span><span class="hud-muted">/ 0120</span></div>
+          <div class="progress-track" aria-hidden="true"><span></span></div>
+        </footer>
+
+        <a class="source-credit" href="https://science.nasa.gov/photojournal/perseverance-rovers-view-up-crater/" target="_blank" rel="noreferrer">
+          IMAGE: NASA/JPL-CALTECH/ASU/MSSS ↗
+        </a>
+
+        <p class="sr-only">
+          这是一幅由毅力号火星车 Mastcam-Z 拍摄的耶泽罗陨石坑边缘全景。页面将全景拆分成 120 张 WebP 图片，滚动位置决定当前显示的帧。
+        </p>
+
+        <div class="loader">
+          <div class="loader-inner">
+            <p class="loader-kicker">PREPARING THE TRAVERSE</p>
+            <div class="loader-word" aria-hidden="true"><span>MARS</span><span class="loader-fill">MARS</span></div>
+            <div class="loader-meta"><span id="load-percent">0%</span><span id="load-count">0 / 120 FRAMES</span></div>
+            <button type="button" class="enter-button" disabled>正在载入火星地表</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const FRAME_COUNT = 120;
+      const MIN_READY_FRAMES = 8;
+      const chapters = [
+        { frame: 0, eyebrow: "MARS / SOL 1229", title: "向陨石坑边缘前进", body: "滚动，将一张火星全景变成一段可亲手控制的旅程。" },
+        { frame: 31, eyebrow: "80° PANORAMA", title: "在岩石与尘土之间", body: "镜头从左向右穿过陨石坑边缘，地貌细节随滚动逐帧显现。" },
+        { frame: 68, eyebrow: "DOX CASTLE / 740 M", title: "下一处地质目标", body: "右侧山坡上的 Dox Castle，距离拍摄位置约 740 米。" },
+        { frame: 98, eyebrow: "59 IMAGES / 1 MOSAIC", title: "来自毅力号的目光", body: "59 张 Mastcam-Z 影像被拼接为一幅全景，再被切成 120 个滚动帧。" }
+      ];
+      const canvas = document.querySelector(".frame-canvas");
+      const context = canvas.getContext("2d");
+      const loader = document.querySelector(".loader");
+      const enterButton = document.querySelector(".enter-button");
+      const loaderFill = document.querySelector(".loader-fill");
+      const rail = document.querySelector(".chapter-rail");
+      const copy = document.querySelector(".story-copy");
+      const progressBar = document.querySelector(".progress-track span");
+      const images = [];
+      let loaded = 0;
+      let entered = false;
+      let frame = 0;
+      let activeChapter = -1;
+      let raf = null;
+
+      document.body.style.overflow = "hidden";
+
+      function pathFor(index) {
+        return `frames/frame_${String(index + 1).padStart(4, "0")}.webp?v=20260820`;
+      }
+
+      function chapterFor(currentFrame) {
+        let current = 0;
+        chapters.forEach((item, index) => { if (currentFrame >= item.frame) current = index; });
+        return current;
+      }
+
+      function drawFrame(index) {
+        let image = images[index];
+        if (!image || !image.complete || !image.naturalWidth) {
+          for (let offset = 1; offset < FRAME_COUNT; offset += 1) {
+            const left = images[index - offset];
+            const right = images[index + offset];
+            if (left && left.complete && left.naturalWidth) { image = left; break; }
+            if (right && right.complete && right.naturalWidth) { image = right; break; }
+          }
+        }
+        if (!image || !image.complete || !image.naturalWidth) return;
+        const width = innerWidth;
+        const height = innerHeight;
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        const pixelWidth = Math.round(width * dpr);
+        const pixelHeight = Math.round(height * dpr);
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+          canvas.width = pixelWidth;
+          canvas.height = pixelHeight;
+        }
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        context.clearRect(0, 0, width, height);
+        const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+        const drawWidth = image.naturalWidth * scale;
+        const drawHeight = image.naturalHeight * scale;
+        context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+      }
+
+      function renderCopy(index) {
+        if (index === activeChapter) return;
+        activeChapter = index;
+        const chapter = chapters[index];
+        document.querySelector("#eyebrow").textContent = chapter.eyebrow;
+        document.querySelector("#title").textContent = chapter.title;
+        document.querySelector("#body-copy").textContent = chapter.body;
+        copy.classList.remove("changed");
+        void copy.offsetWidth;
+        copy.classList.add("changed");
+        rail.querySelectorAll(".rail-dot").forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
+      }
+
+      function renderFromScroll() {
+        raf = null;
+        const scrollable = Math.max(document.documentElement.scrollHeight - innerHeight, 1);
+        const progress = Math.min(Math.max(scrollY / scrollable, 0), 1);
+        frame = Math.min(FRAME_COUNT - 1, Math.round(progress * (FRAME_COUNT - 1)));
+        drawFrame(frame);
+        renderCopy(chapterFor(frame));
+        document.querySelector("#frame-now").textContent = String(frame + 1).padStart(4, "0");
+        progressBar.style.transform = `scaleX(${progress})`;
+      }
+
+      function requestRender() {
+        if (raf === null) raf = requestAnimationFrame(renderFromScroll);
+      }
+
+      chapters.forEach((chapter, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rail-dot";
+        button.setAttribute("aria-label", `前往第 ${index + 1} 章：${chapter.title}`);
+        button.addEventListener("click", () => {
+          const maxScroll = document.documentElement.scrollHeight - innerHeight;
+          scrollTo({ top: chapter.frame / (FRAME_COUNT - 1) * maxScroll, behavior: "smooth" });
+        });
+        rail.appendChild(button);
+      });
+
+      for (let index = 0; index < FRAME_COUNT; index += 1) {
+        const image = new Image();
+        image.decoding = "async";
+        image.onload = () => {
+          loaded += 1;
+          const percent = Math.round(loaded / FRAME_COUNT * 100);
+          document.querySelector("#load-percent").textContent = `${percent}%`;
+          document.querySelector("#load-count").textContent = `${loaded} / ${FRAME_COUNT} FRAMES`;
+          loaderFill.style.clipPath = `inset(0 ${100 - percent}% 0 0)`;
+          if (index === 0 || loaded === 1 || (entered && index === frame)) drawFrame(frame);
+          if (loaded >= MIN_READY_FRAMES && enterButton.disabled) {
+            enterButton.disabled = false;
+            enterButton.textContent = loaded === FRAME_COUNT
+              ? "进入火星横越 →"
+              : "进入火星横越（后台继续载入）→";
+          } else if (loaded === FRAME_COUNT) {
+            enterButton.textContent = "进入火星横越 →";
+          }
+        };
+        image.onerror = () => {
+          if (loaded < MIN_READY_FRAMES) enterButton.textContent = "网络较慢，正在继续载入";
+        };
+        image.src = pathFor(index);
+        images.push(image);
+      }
+
+      enterButton.addEventListener("click", () => {
+        if (loaded < MIN_READY_FRAMES) return;
+        scrollTo(0, 0);
+        entered = true;
+        document.body.style.overflow = "auto";
+        loader.classList.add("hidden");
+        renderFromScroll();
+      });
+
+      addEventListener("scroll", requestRender, { passive: true });
+      addEventListener("resize", requestRender);
+      addEventListener("keydown", event => {
+        if (!entered) return;
+        const maxScroll = document.documentElement.scrollHeight - innerHeight;
+        const step = maxScroll / (FRAME_COUNT - 1) * 8;
+        if (["ArrowDown", "PageDown", " "].includes(event.key)) {
+          event.preventDefault(); scrollBy({ top: step, behavior: "smooth" });
+        } else if (["ArrowUp", "PageUp"].includes(event.key)) {
+          event.preventDefault(); scrollBy({ top: -step, behavior: "smooth" });
+        } else if (event.key === "Home") {
+          event.preventDefault(); scrollTo({ top: 0, behavior: "smooth" });
+        } else if (event.key === "End") {
+          event.preventDefault(); scrollTo({ top: maxScroll, behavior: "smooth" });
+        }
+      });
+
+      renderCopy(0);
+    </script>
+  </body>
+</html>
